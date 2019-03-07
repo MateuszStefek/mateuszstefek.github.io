@@ -1,0 +1,4 @@
+body {
+  width: calc(100% - #{$right-sidebar-width-narrow});
+  background-color: blue !important
+}
