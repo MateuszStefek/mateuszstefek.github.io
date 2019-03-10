@@ -1,73 +1,19 @@
 ---
 layout: post
 title: Java habits you should break in Kotlin
+comments: true
 ---
 
-# Lessons from the history: Classic OO patterns partially obsoleted by Java 8
-
-About 10 years ago, a typical Java repository was full of classes with patterns in their names:
-- Factory
-- Command
-- Chain (of command)
-- Strategy
-- Adapter
-- Decorator
-
-This trend resulted in code exemplified by this piece of artwork:
-```java
-public class ObjectFactoryCreatingFactoryBean extends AbstractFactoryBean<ObjectFactory<Object>> {
-    @Nullable
-    private String targetBeanName;
-```
-This class is not a joke, but a core element of the Spring framework.
-
-But in 2014, Java 8 was released and since then,
-we have been observing less and less
-`CommandFactoryStrategyAdapter` nonsense in our repositories.
-It still happens, but this style isn't that trendy anymore.
-
-Basically, the functional elements of Java 8 demonstrated
-what functional programming advocates had been saying for years.
-Many OO design patterns are just workarounds for inconveniences of C++ or Java:
-
-Factory is just a function returning an object:
-```java
-var fruitFactory = () -> new Orange()
-```
-
-Command is just a partial function application:
-```
-command = receiver -> receiver.method(parameter)
-```
-
-Decorator is often a simple function composition:
-```
-enhanced = x -> enhance(delegate.f())
-```
-
-Adapter might be trivial:
-```
-adapter = (param1, param2) -> adaptee.someMethod(param2, param1, null)
-```
-
-Chain Of Responsibility can be replaced by folding:
-```
-compositeHandler = input -> handlers.foldRight(input, (h, acc) -> h.handle(acc))
-```
-
-What I'm trying to say is, when you switch a programming language,
-you need to check your habits and patterns to evaluate
-if they are still relevant.
-Often the old style is not only old-school, but also harmful.
-
-# Kotlin
 I've been programming in Kotlin for a few months now, after many years of Java.
 I'm observing my style evolving a lot, even though the languages are not that different.
 
-Here is a list of my observations and tips for someone who is, like me, jumping into the Kotlin world.
+Here is a list of my observations and tips for someone who is, like me,
+jumping into the Kotlin world from Java.
 
 # 0. Don't use java.util.Optional
-I promise, this is the last obvious entry.
+I promise, this is the last obvious entry in this list.
+It's included to demonstrate a point that a feature glorified in one language
+can be a clear antipattern in another.
 
 This is how Java coders protect themselves from the dreaded `NullPointerException`:
 ```java
@@ -227,4 +173,174 @@ val car = newCar {
 ```
 Use this technique with judgement. The amount of magic can be overwhelming.
 
-# 2. Fluent interfaces in general
+# 2. Fluent interfaces are suspicious
+
+My distaste for fluent interfaces probably started when I was working on a home-cooked implementation of Abstract DAO.
+It had an interface which allowed to run queries with fluent method chaining:
+```
+List<Product> products = dao
+    .where()
+    .lessOrEqual("price", 4.0)
+    .limit(50)
+    .query()
+```
+
+It was pretty nice to use,
+but imagine what I had to do when I needed to create a caching decorator for that DAO.
+
+Since then, I make sure that my Java classes clearly separate the actual code from fluent wrappers on that code.
+With Kotlin's extension methods and scope functions the fluent wrappers can disappear completely.
+
+## 2.1. Fluent interface example: Jackson2ObjectMapperBuilder
+
+The Spring Framework has a lot of fluent utilities.
+Let's take a look at [Jackson2ObjectMapperBuilder](https://github.com/spring-projects/spring-framework/blob/master/spring-web/src/main/java/org/springframework/http/converter/json/Jackson2ObjectMapperBuilder.java).
+
+If you are not a Jackson guru, you might not know how to configure unknown properties,
+so Spring prepared a helper method for you:
+
+```
+public Jackson2ObjectMapperBuilder failOnUnknownProperties(boolean failOnUnknownProperties) {
+        this.features.put(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, failOnUnknownProperties);
+        return this;
+}
+```
+
+which adds a feature to a collection and later, during `build()`,
+one of overloaded `configure` methods of `ObjectMapper` is called:
+
+```
+private void configureFeature(ObjectMapper objectMapper, Object feature, boolean enabled) {
+    if (feature instanceof JsonParser.Feature) {
+        objectMapper.configure((JsonParser.Feature) feature, enabled);
+    }
+    else if (feature instanceof JsonGenerator.Feature) {
+        objectMapper.configure((JsonGenerator.Feature) feature, enabled);
+    }
+    else if (feature instanceof SerializationFeature) {
+        objectMapper.configure((SerializationFeature) feature, enabled);
+    }
+    else if (feature instanceof DeserializationFeature) {
+        objectMapper.configure((DeserializationFeature) feature, enabled);
+    }
+    else if (feature instanceof MapperFeature) {
+        objectMapper.configure((MapperFeature) feature, enabled);
+    }
+    else {
+        throw new FatalBeanException("Unknown feature class: " + feature.getClass().getName());
+    }
+}
+```
+
+In Kotlin, to add a feature to an existing class, we can simply write an extension method:
+
+```kotlin
+fun ObjectMapper.failOnUnknownProperties(failOnUnknownProperties: Boolean) {
+    configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, failOnUnknownProperties)
+}
+```
+
+`Jackson2ObjectMapperBuilder` has elements of The Classic builder and there
+are use cases where you need exactly that.
+However, you usually use it for the fluent stuff.
+
+Most of the utils from `Jackson2ObjectMapperBuilder` can be replaced by extension methods,
+some of them simple as above, some requiring a couple lines of code.
+
+# 3. Don't ponder on method order within a class - use nested functions
+
+If your class has multiple public methods and each public method needs a few helper methods,
+you probably organize them in this order, as this is what "Clean Code" suggests:
+```
+class MyBoringCRUDService {
+  public methodA
+  private helperA1
+  private helperA2
+
+  public methodB
+  private helperB1
+  private helperB2
+
+  private sharedHelperMethod
+}
+```
+
+However, there are people who prefer the "public methods first" strategy:
+```
+class MyBoringCRUDService {
+  public methodA
+  public methodB
+
+  private helperA1
+  private helperA2
+
+  private helperB1
+  private helperB2
+
+  private commonHelperMethod
+}
+```
+
+You can spend a lot of time on bikeshedding, discussing which order is better,
+but in both cases, the helper methods feel like a mess after a few months of heavy development.
+
+In Kotlin, I find nested functions quite useful in that regard. Here's an example:
+
+```kotlin
+class OrderEvaluationService(
+        val priceService: PriceService,
+        val discountService: DiscountService
+) {
+    fun calculateTotalPrice(orderLines: List<OrderLine>, customer: Customer): BigDecimal {
+
+        fun orderLinePrice(orderLine: OrderLine): BigDecimal {
+            val basePrice = priceService.currentPrice(orderLine.item) * orderLine.quantity
+            val discount: BigDecimal? = discountService.discountGranted(customer, orderLine.item)
+
+            return if (discount != null) {
+                basePrice * (ONE - discount)
+            } else {
+                basePrice
+            }
+        }
+
+        return orderLines.sumBy { orderLinePrice(it) }
+    }
+}
+```
+
+It's obvious what is the scope of the helper function,
+so there is less chance it gets lost in a large class.
+
+The inner function uses less parameters, as it can access all variables in the scope of the outer function.
+In the example, I didn't have to pass the `customer` object (explicitly, as the compiler probably does it for me).
+
+The price for this solution is that it violates two primal instincts of a good Java programmer:
+the fear of long functions and the fear of many levels of indentation.
+You should expect some complaints during code review and need to
+argue for not including the length of the inner function when counting the lines of the outer functions.
+
+This technique has some limits - it works best when the main function fits in a screen (vertically).
+
+# 4. Standard Java functional interfaces
+
+It seems natural to use Java's `Consumer` and `Supplier`:
+
+```
+fun doStuff(callback: Consumer<Item>) {
+
+}
+```
+
+but in Kotlin these are not needed, as you can use more first-class-citizen functions:
+
+```kotlin
+fun doStuff(callback: (Item) -> Any) {
+
+}
+```
+
+These have the advantage, that the generic types have their variance properly defined - input parameters are 'in',
+result type is 'out'.
+
+# Conclusion
