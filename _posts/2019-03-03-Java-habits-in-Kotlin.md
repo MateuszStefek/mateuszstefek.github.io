@@ -324,7 +324,7 @@ This technique has some limits - it works best when the main function fits in a 
 
 # 4. Standard Java functional interfaces
 
-It seems natural to use Java's `Consumer` and `Supplier`:
+It seems natural to use Java's `Consumer` or `Supplier`:
 
 ```
 fun doStuff(callback: Consumer<Item>) {
@@ -332,7 +332,7 @@ fun doStuff(callback: Consumer<Item>) {
 }
 ```
 
-but in Kotlin these are not needed, as you can use more first-class-citizen functions:
+but in Kotlin these are not needed, as you can use first-class-citizen function types:
 
 ```kotlin
 fun doStuff(callback: (Item) -> Any) {
@@ -340,7 +340,7 @@ fun doStuff(callback: (Item) -> Any) {
 }
 ```
 
-These have the advantage, that the generic types have their variance properly defined - input parameters are 'in',
-result type is 'out'.
+These have the advantage that the generic types have the variance properly defined - input parameters are 'in',
+result types are 'out'. You don't have to write anything to simulate `Consumer<? super Item>`.
 
 # Conclusion
