@@ -102,7 +102,7 @@ Arguably, the construction of car2 is easier to read.
 Kotlin's solution to the explicit naming problem are
 [Named Arguments](http://kotlinlang.org/docs/reference/functions.html#named-arguments):
 ```kotlin
-val car = Car(doors = 4, horsePower = 4)
+val car = Car(doors = 4, horsePower = 100)
 ```
 This has a nice property that when someone adds a new field to the class,
 this code will no longer compile.
@@ -117,7 +117,7 @@ assertThat(service.estimatePrice(exampleCarBuilder().withDoors(4).build()))
   .returns(whatever);
 ```
 
-In Kotlin, if you have an expression you want to keep in a single statement, you
+In Kotlin, if you have an expression you don't want to split into multiple statements, you
 can use one of the scope functions:
 [let](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/let.html),
 [apply](https://kotlinlang.org/api/latest/jvm/stdlib/kotlin/apply.html),
@@ -189,14 +189,19 @@ It was pretty nice to use,
 but imagine what I had to do when I needed to create a caching decorator for that DAO.
 
 Since then, I make sure that my Java classes clearly separate the actual code from fluent wrappers on that code.
-With Kotlin's extension methods and scope functions the fluent wrappers can disappear completely.
+
+Once you have these two responsibilities separated, you can use Kotlin's extension methods
+and scope functions to make the fluent wrappers disappear completely.
 
 ## 2.1. Fluent interface example: Jackson2ObjectMapperBuilder
 
 The Spring Framework has a lot of fluent utilities.
-Let's take a look at [Jackson2ObjectMapperBuilder](https://github.com/spring-projects/spring-framework/blob/master/spring-web/src/main/java/org/springframework/http/converter/json/Jackson2ObjectMapperBuilder.java).
+They actually make a good job of separating fluent wrappers from code that does the real work.
 
-If you are not a Jackson guru, you might not know how to configure unknown properties,
+Let's take a look at [Jackson2ObjectMapperBuilder](https://github.com/spring-projects/spring-framework/blob/master/spring-web/src/main/java/org/springframework/http/converter/json/Jackson2ObjectMapperBuilder.java)
+which is a builder pattern for Jackson's `ObjectMapper`.
+
+If you are not a Jackson guru, you might not know how to configure unknown properties behaviour,
 so Spring prepared a helper method for you:
 
 ```
@@ -206,7 +211,7 @@ public Jackson2ObjectMapperBuilder failOnUnknownProperties(boolean failOnUnknown
 }
 ```
 
-which adds a feature to a collection and later, during `build()`,
+which stores a 'feature' in `this.features` and later, during `build()`,
 one of overloaded `configure` methods of `ObjectMapper` is called:
 
 ```
@@ -245,7 +250,7 @@ are use cases where you need exactly that.
 However, you usually use it for the fluent stuff.
 
 Most of the utils from `Jackson2ObjectMapperBuilder` can be replaced by extension methods,
-some of them simple as above, some requiring a couple lines of code.
+some of them with a simple extension as above, some requiring a couple lines of code.
 
 # 3. Don't ponder on method order within a class - use nested functions
 
@@ -281,7 +286,7 @@ class MyBoringCRUDService {
 }
 ```
 
-You can spend a lot of time on bikeshedding, discussing which order is better,
+You can spend a lot of time on bikeshedding which order is better,
 but in both cases, the helper methods feel like a mess after a few months of heavy development.
 
 In Kotlin, I find nested functions quite useful in that regard. Here's an example:
@@ -309,18 +314,19 @@ class OrderEvaluationService(
 }
 ```
 
-It's obvious what is the scope of the helper function,
-so there is less chance it gets lost in a large class.
+It's obvious what the scope of the helper function is,
+so there is less chance that it gets lost in a large class.
 
 The inner function uses less parameters, as it can access all variables in the scope of the outer function.
-In the example, I didn't have to pass the `customer` object (explicitly, as the compiler probably does it for me).
+`calculateTotalPrice` doesn't have to pass the `customer` object
+(explicitly, as the compiler probably does it in the compiled code).
 
-The price for this solution is that it violates two primal instincts of a good Java programmer:
+The price for this technique is that it violates two primal instincts of a good Java programmer:
 the fear of long functions and the fear of many levels of indentation.
 You should expect some complaints during code review and need to
 argue for not including the length of the inner function when counting the lines of the outer functions.
 
-This technique has some limits - it works best when the main function fits in a screen (vertically).
+There are some limits - nested functions works best when the main function still fits in a screen, vertically.
 
 # 4. Standard Java functional interfaces
 
@@ -341,6 +347,8 @@ fun doStuff(callback: (Item) -> Any) {
 ```
 
 These have the advantage that the generic types have the variance properly defined - input parameters are 'in',
-result types are 'out'. You don't have to write anything to simulate `Consumer<? super Item>`.
+result types are 'out'. You don't have to write any code to simulate Java's `?` as in `Consumer<? super Item>`.
 
-# Conclusion
+# There's more
+
+I'm planning to extend this list every time I have a gotcha moment worth sharing.
